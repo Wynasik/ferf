@@ -3,312 +3,344 @@ package com.github.franckyi.ibeeditor.client.screen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
 
 public class ItemEditorScreen extends Screen {
+    private enum Tab {
+        BASIC("Основные"),
+        DISPLAY("Отображение"),
+        ENCHANTS("Чары"),
+        ATTRIBUTES("Модификаторы атрибутов"),
+        HIDDEN("Скрытые данные"),
+        BLOCKS("Ломаемые блоки");
+
+        private final String title;
+
+        Tab(String title) {
+            this.title = title;
+        }
+    }
+
+    private Tab selectedTab = Tab.BASIC;
+
+    private EditBox itemIdField;
+    private EditBox countField;
+    private EditBox damageField;
+
     private EditBox nameField;
     private EditBox loreField;
-    private EditBox damageField;
+    private EditBox repairCostField;
+    private EditBox maxStackField;
+
     public ItemEditorScreen() {
         super(Component.literal("IBE Editor"));
     }
 
     @Override
     protected void init() {
-        this.nameField = new EditBox(
-                this.font,
-                this.width / 2 - 145,
-                this.height - 140,
-                180,
-                20,
-                Component.literal("Новое имя")
-        );
+        rebuildIbeWidgets();
+    }
 
-        this.nameField.setMaxLength(128);
-        this.nameField.setHint(Component.literal("Новое имя предмета"));
-        this.addRenderableWidget(this.nameField);
+    private void rebuildIbeWidgets() {
+        this.clearWidgets();
 
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Имя"),
-                        button -> setCustomName()
-                ).bounds(
-                        this.width / 2 + 40,
-                        this.height - 140,
-                        50,
-                        20
-                ).build()
-        );
+        int leftPanelX = 10;
+        int leftPanelY = 42;
+        int leftPanelWidth = 205;
 
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Сброс"),
-                        button -> clearCustomName()
-                ).bounds(
-                        this.width / 2 + 95,
-                        this.height - 140,
-                        60,
-                        20
-                ).build()
-        );
+        int tabY = leftPanelY + 8;
 
-        this.loreField = new EditBox(
-                this.font,
-                this.width / 2 - 145,
-                this.height - 112,
-                180,
-                20,
-                Component.literal("Описание")
-        );
+        for (Tab tab : Tab.values()) {
+            addButton(
+                    leftPanelX + 10,
+                    tabY,
+                    leftPanelWidth - 20,
+                    22,
+                    tab.title,
+                    () -> {
+                        selectedTab = tab;
+                        rebuildIbeWidgets();
+                    }
+            );
+            tabY += 30;
+        }
 
-        this.loreField.setMaxLength(256);
-        this.loreField.setHint(Component.literal("Lore: строка1|строка2"));
-        this.addRenderableWidget(this.loreField);
+        switch (selectedTab) {
+            case BASIC -> initBasicTab();
+            case DISPLAY -> initDisplayTab();
+            case ENCHANTS -> initPlaceholderTab("Редактор чар будет следующим шагом");
+            case ATTRIBUTES -> initPlaceholderTab("Модификаторы атрибутов будут позже");
+            case HIDDEN -> initHiddenTab();
+            case BLOCKS -> initPlaceholderTab("Ломаемые блоки будут позже");
+        }
 
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Lore"),
-                        button -> setLore()
-                ).bounds(
-                        this.width / 2 + 40,
-                        this.height - 112,
-                        50,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Сброс"),
-                        button -> clearLore()
-                ).bounds(
-                        this.width / 2 + 95,
-                        this.height - 112,
-                        60,
-                        20
-                ).build()
-        );
-
-        this.damageField = new EditBox(
-                this.font,
-                this.width / 2 - 145,
-                this.height - 84,
+        addButton(
+                this.width - 90,
+                this.height - 30,
                 80,
                 20,
-                Component.literal("Damage")
+                "Закрыть",
+                this::onClose
         );
+    }
 
-        this.damageField.setMaxLength(8);
-        this.damageField.setHint(Component.literal("Damage"));
-        this.addRenderableWidget(this.damageField);
+    private void initBasicTab() {
+        int x = 305;
+        int y = 62;
+        int labelX = 225;
+        int fieldWidth = this.width - x - 80;
 
+        ItemStack stack = getCurrentStack();
+
+        String id = stack.isEmpty() ? "" : String.valueOf(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+        String count = stack.isEmpty() ? "1" : String.valueOf(stack.getCount());
+        String damage = stack.isEmpty() || !stack.isDamageableItem() ? "0" : String.valueOf(stack.getDamageValue());
+
+        this.itemIdField = addTextField(x, y, fieldWidth, id, 256);
+        addSmallActionButton(x + fieldWidth + 8, y, "⟳", () -> {
+            if (!getCurrentStack().isEmpty()) {
+                itemIdField.setValue(String.valueOf(BuiltInRegistries.ITEM.getKey(getCurrentStack().getItem())));
+            }
+        });
+        y += 36;
+
+        this.countField = addTextField(x, y, fieldWidth, count, 3);
+        addSmallActionButton(x + fieldWidth + 8, y, "✓", () -> sendIntFromField("ibe count ", countField, 1, 99));
+        y += 36;
+
+        this.damageField = addTextField(x, y, fieldWidth, damage, 8);
+        addSmallActionButton(x + fieldWidth + 8, y, "✓", () -> sendIntFromField("ibe damage ", damageField, 0, Integer.MAX_VALUE));
+        y += 36;
+
+        addButton(x, y, 110, 20, "Починить", () -> sendCommand("ibe repair"));
+        addButton(x + 120, y, 90, 20, "ВКЛ", () -> sendCommand("ibe unbreakable true"));
+        addButton(x + 220, y, 90, 20, "ВЫКЛ", () -> sendCommand("ibe unbreakable false"));
+        y += 36;
+
+        addButton(x, y, 110, 20, "Count 1", () -> sendCommand("ibe count 1"));
+        addButton(x + 120, y, 110, 20, "Count 64", () -> sendCommand("ibe count 64"));
+
+        // Метки рисуются в renderBasicTab()
+    }
+
+    private void initDisplayTab() {
+        int x = 305;
+        int y = 62;
+        int fieldWidth = this.width - x - 80;
+
+        this.nameField = addTextField(x, y, fieldWidth, "", 128);
+        addSmallActionButton(x + fieldWidth + 8, y, "✓", () -> sendTextFromField("ibe name ", nameField));
+        y += 28;
+        addButton(x, y, 120, 20, "Очистить имя", () -> sendCommand("ibe clearname"));
+
+        y += 36;
+        this.loreField = addTextField(x, y, fieldWidth, "", 256);
+        addSmallActionButton(x + fieldWidth + 8, y, "✓", () -> sendTextFromField("ibe lore ", loreField));
+        y += 28;
+        addButton(x, y, 120, 20, "Очистить lore", () -> sendCommand("ibe clearlore"));
+
+        y += 36;
+        this.repairCostField = addTextField(x, y, 120, "", 8);
+        addButton(x + 130, y, 130, 20, "Repair Cost", () -> sendIntFromField("ibe repaircost ", repairCostField, 0, 1_000_000));
+
+        y += 36;
+        this.maxStackField = addTextField(x, y, 120, "", 3);
+        addButton(x + 130, y, 130, 20, "Max Stack", () -> sendIntFromField("ibe maxstack ", maxStackField, 1, 99));
+
+        y += 36;
+        addButton(x, y, 90, 20, "Common", () -> sendCommand("ibe rarity common"));
+        addButton(x + 100, y, 100, 20, "Uncommon", () -> sendCommand("ibe rarity uncommon"));
+        addButton(x + 210, y, 70, 20, "Rare", () -> sendCommand("ibe rarity rare"));
+        addButton(x + 290, y, 70, 20, "Epic", () -> sendCommand("ibe rarity epic"));
+
+        y += 30;
+        addButton(x, y, 100, 20, "Glint ON", () -> sendCommand("ibe glint true"));
+        addButton(x + 110, y, 100, 20, "Glint OFF", () -> sendCommand("ibe glint false"));
+        addButton(x + 220, y, 120, 20, "Очистить glint", () -> sendCommand("ibe clearglint"));
+
+        y += 30;
+        addButton(x, y, 180, 20, "Очистить custom", () -> sendCommand("ibe clearcustom"));
+    }
+
+    private void initHiddenTab() {
+        int x = 305;
+        int y = 62;
+
+        addButton(x, y, 180, 20, "Скопировать данные", this::copyItemData);
+    }
+
+    private void initPlaceholderTab(String text) {
+        int x = 305;
+        int y = 62;
+
+        addButton(x, y, 260, 20, text, () -> {
+        });
+    }
+
+    private EditBox addTextField(int x, int y, int width, String value, int maxLength) {
+        EditBox field = new EditBox(this.font, x, y, width, 20, Component.empty());
+        field.setMaxLength(maxLength);
+        field.setValue(value);
+        this.addRenderableWidget(field);
+        return field;
+    }
+
+    private void addSmallActionButton(int x, int y, String text, Runnable action) {
+        addButton(x, y, 24, 20, text, action);
+    }
+
+    private void addButton(int x, int y, int width, int height, String text, Runnable action) {
         this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Damage"),
-                        button -> setDamage()
-                ).bounds(
-                        this.width / 2 - 60,
-                        this.height - 84,
-                        70,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Починить"),
-                        button -> repairItem()
-                ).bounds(
-                        this.width / 2 + 15,
-                        this.height - 84,
-                        80,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("-1"),
-                        button -> changeCount(-1)
-                ).bounds(
-                        this.width / 2 - 145,
-                        this.height - 56,
-                        40,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("+1"),
-                        button -> changeCount(1)
-                ).bounds(
-                        this.width / 2 - 100,
-                        this.height - 56,
-                        40,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("16"),
-                        button -> setCount(16)
-                ).bounds(
-                        this.width / 2 - 55,
-                        this.height - 56,
-                        40,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("64"),
-                        button -> setCount(64)
-                ).bounds(
-                        this.width / 2 - 10,
-                        this.height - 56,
-                        40,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("99"),
-                        button -> setCount(99)
-                ).bounds(
-                        this.width / 2 + 35,
-                        this.height - 56,
-                        40,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Скопировать данные"),
-                        button -> copyItemData()
-                ).bounds(
-                        this.width / 2 - 105,
-                        this.height - 32,
-                        130,
-                        20
-                ).build()
-        );
-
-        this.addRenderableWidget(
-                Button.builder(
-                        Component.literal("Закрыть"),
-                        button -> this.onClose()
-                ).bounds(
-                        this.width / 2 + 35,
-                        this.height - 32,
-                        80,
-                        20
-                ).build()
+                Button.builder(Component.literal(text), button -> action.run())
+                        .bounds(x, y, width, height)
+                        .build()
         );
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        guiGraphics.fill(0, 0, this.width, this.height, 0xC0101010);
+        renderBackground(guiGraphics);
 
-        guiGraphics.drawCenteredString(
-                this.font,
-                Component.literal("IBE Editor 1.21.4"),
-                this.width / 2,
-                15,
-                0xFFFFFF
-        );
+        renderPanels(guiGraphics);
 
-        Minecraft minecraft = Minecraft.getInstance();
+        renderTitle(guiGraphics);
 
-        if (minecraft.player == null) {
-            guiGraphics.drawCenteredString(
-                    this.font,
-                    Component.literal("Игрок не найден"),
-                    this.width / 2,
-                    this.height / 2,
-                    0xFF5555
-            );
-
-            super.render(guiGraphics, mouseX, mouseY, partialTick);
-            return;
-        }
-
-        ItemStack stack = minecraft.player.getMainHandItem();
-
-        if (stack.isEmpty()) {
-            guiGraphics.drawCenteredString(
-                    this.font,
-                    Component.literal("В руке нет предмета"),
-                    this.width / 2,
-                    this.height / 2,
-                    0xFF5555
-            );
-
-            super.render(guiGraphics, mouseX, mouseY, partialTick);
-            return;
-        }
-
-        int left = 25;
-        int top = 42;
-        int lineHeight = 12;
-
-        drawLine(guiGraphics, "Название: " + stack.getHoverName().getString(), left, top, 0xFFFFFF);
-        top += lineHeight;
-
-        drawLine(guiGraphics, "ID: " + BuiltInRegistries.ITEM.getKey(stack.getItem()), left, top, 0xAAAAFF);
-        top += lineHeight;
-
-        drawLine(guiGraphics, "Количество: " + stack.getCount(), left, top, 0xFFFFFF);
-        top += lineHeight * 2;
-
-        drawLine(guiGraphics, "Компоненты предмета:", left, top, 0xFFFF55);
-        top += lineHeight;
-
-        String componentsText = String.valueOf(stack.getComponents());
-
-        List<String> lines = wrapText(componentsText, 100);
-
-        int maxLines = Math.max(1, (this.height - top - 155) / lineHeight);
-
-        for (int i = 0; i < lines.size() && i < maxLines; i++) {
-            drawLine(guiGraphics, lines.get(i), left, top + i * lineHeight, 0xDDDDDD);
-        }
-
-        if (lines.size() > maxLines) {
-            drawLine(
-                    guiGraphics,
-                    "... данные не помещаются на экран, нажми \"Скопировать данные\"",
-                    left,
-                    top + maxLines * lineHeight,
-                    0xFFAA00
-            );
+        switch (selectedTab) {
+            case BASIC -> renderBasicTab(guiGraphics);
+            case DISPLAY -> renderDisplayTab(guiGraphics);
+            case ENCHANTS -> renderPlaceholder(guiGraphics, "Здесь будет редактор чар");
+            case ATTRIBUTES -> renderPlaceholder(guiGraphics, "Здесь будут модификаторы атрибутов");
+            case HIDDEN -> renderHiddenTab(guiGraphics);
+            case BLOCKS -> renderPlaceholder(guiGraphics, "Здесь будут ломаемые блоки");
         }
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
-    private void drawLine(GuiGraphics guiGraphics, String text, int x, int y, int color) {
-        guiGraphics.drawString(
+    private void renderBackground(GuiGraphics guiGraphics) {
+        guiGraphics.fill(0, 0, this.width, this.height, 0xE0101010);
+    }
+
+    private void renderPanels(GuiGraphics guiGraphics) {
+        int leftPanelX = 10;
+        int leftPanelY = 42;
+        int leftPanelWidth = 205;
+        int panelHeight = this.height - 82;
+
+        int rightPanelX = 225;
+        int rightPanelY = 42;
+        int rightPanelWidth = this.width - rightPanelX - 10;
+
+        guiGraphics.fill(leftPanelX, leftPanelY, leftPanelX + leftPanelWidth, leftPanelY + panelHeight, 0xAA1C1C1C);
+        guiGraphics.fill(rightPanelX, rightPanelY, rightPanelX + rightPanelWidth, rightPanelY + panelHeight, 0xAA1C1C1C);
+
+        guiGraphics.fill(leftPanelX, leftPanelY, leftPanelX + leftPanelWidth, leftPanelY + 1, 0xFF555555);
+        guiGraphics.fill(rightPanelX, rightPanelY, rightPanelX + rightPanelWidth, rightPanelY + 1, 0xFF555555);
+    }
+
+    private void renderTitle(GuiGraphics guiGraphics) {
+        guiGraphics.drawCenteredString(
                 this.font,
-                Component.literal(text),
-                x,
-                y,
-                color,
-                false
+                Component.literal("Предмет"),
+                this.width / 2,
+                18,
+                0xFFFFFF
         );
+    }
+
+    private void renderBasicTab(GuiGraphics guiGraphics) {
+        int labelX = 235;
+        int y = 68;
+
+        drawRightLabel(guiGraphics, "ID предмета", labelX, y);
+        y += 36;
+
+        drawRightLabel(guiGraphics, "Количество", labelX, y);
+        y += 36;
+
+        drawRightLabel(guiGraphics, "Прочность", labelX, y);
+        y += 36;
+
+        ItemStack stack = getCurrentStack();
+        boolean unbreakable = !stack.isEmpty() && stack.has(DataComponents.UNBREAKABLE);
+
+        drawRightLabel(guiGraphics, "Неразрушимый: " + (unbreakable ? "ДА" : "НЕТ"), labelX, y);
+
+        stack = getCurrentStack();
+        if (!stack.isEmpty()) {
+            int infoY = this.height - 70;
+            drawLine(guiGraphics, "Текущий предмет: " + stack.getHoverName().getString(), 235, infoY, 0xAAAAAA);
+            drawLine(guiGraphics, "Компоненты: " + stack.getComponents().size(), 235, infoY + 12, 0xAAAAAA);
+        }
+    }
+
+    private void renderDisplayTab(GuiGraphics guiGraphics) {
+        int labelX = 235;
+        int y = 68;
+
+        drawRightLabel(guiGraphics, "Название", labelX, y);
+        y += 64;
+
+        drawRightLabel(guiGraphics, "Описание", labelX, y);
+        y += 64;
+
+        drawRightLabel(guiGraphics, "Repair Cost", labelX, y);
+        y += 36;
+
+        drawRightLabel(guiGraphics, "Max Stack", labelX, y);
+        y += 36;
+
+        drawRightLabel(guiGraphics, "Редкость", labelX, y);
+        y += 30;
+
+        drawRightLabel(guiGraphics, "Блеск", labelX, y);
+    }
+
+    private void renderHiddenTab(GuiGraphics guiGraphics) {
+        ItemStack stack = getCurrentStack();
+
+        int x = 235;
+        int y = 95;
+
+        if (stack.isEmpty()) {
+            drawLine(guiGraphics, "В руке нет предмета", x, y, 0xFF5555);
+            return;
+        }
+
+        drawLine(guiGraphics, "Скрытые данные / Components", x, 68, 0xFFFF55);
+
+        String componentsText = String.valueOf(stack.getComponents());
+        List<String> lines = wrapText(componentsText, 115);
+
+        int maxLines = Math.max(1, (this.height - y - 80) / 12);
+
+        for (int i = 0; i < lines.size() && i < maxLines; i++) {
+            drawLine(guiGraphics, lines.get(i), x, y + i * 12, 0xDDDDDD);
+        }
+
+        if (lines.size() > maxLines) {
+            drawLine(guiGraphics, "... данные не помещаются, нажми \"Скопировать данные\"", x, y + maxLines * 12, 0xFFAA00);
+        }
+    }
+
+    private void renderPlaceholder(GuiGraphics guiGraphics, String text) {
+        drawLine(guiGraphics, text, 235, 68, 0xAAAAAA);
+    }
+
+    private void drawRightLabel(GuiGraphics guiGraphics, String text, int x, int y) {
+        guiGraphics.drawString(this.font, Component.literal(text), x, y, 0xFFFFFF, false);
+    }
+
+    private void drawLine(GuiGraphics guiGraphics, String text, int x, int y, int color) {
+        guiGraphics.drawString(this.font, Component.literal(text), x, y, color, false);
     }
 
     private List<String> wrapText(String text, int maxChars) {
@@ -338,138 +370,78 @@ public class ItemEditorScreen extends Screen {
 
         return result;
     }
-    private void setCustomName() {
+
+    private ItemStack getCurrentStack() {
         Minecraft minecraft = Minecraft.getInstance();
 
-        if (minecraft.player == null || minecraft.player.connection == null || nameField == null) {
-            return;
+        if (minecraft.player == null) {
+            return ItemStack.EMPTY;
         }
 
-        String name = nameField.getValue().trim();
-
-        if (name.isEmpty()) {
-            return;
-        }
-
-        minecraft.player.connection.sendCommand("ibe name " + name);
+        return minecraft.player.getMainHandItem();
     }
 
-    private void clearCustomName() {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        if (minecraft.player == null || minecraft.player.connection == null) {
+    private void sendTextFromField(String prefix, EditBox field) {
+        if (field == null) {
             return;
         }
 
-        minecraft.player.connection.sendCommand("ibe clearname");
-    }
-    private void setLore() {
-        Minecraft minecraft = Minecraft.getInstance();
+        String value = field.getValue().trim();
 
-        if (minecraft.player == null || minecraft.player.connection == null || loreField == null) {
+        if (value.isEmpty()) {
             return;
         }
 
-        String lore = loreField.getValue().trim();
-
-        if (lore.isEmpty()) {
-            return;
-        }
-
-        minecraft.player.connection.sendCommand("ibe lore " + lore);
+        sendCommand(prefix + value);
     }
 
-    private void clearLore() {
+    private void sendIntFromField(String prefix, EditBox field, int min, int max) {
         Minecraft minecraft = Minecraft.getInstance();
 
-        if (minecraft.player == null || minecraft.player.connection == null) {
+        if (field == null) {
             return;
         }
 
-        minecraft.player.connection.sendCommand("ibe clearlore");
-    }
-    private void setDamage() {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        if (minecraft.player == null || minecraft.player.connection == null || damageField == null) {
-            return;
-        }
-
-        String value = damageField.getValue().trim();
+        String value = field.getValue().trim();
 
         if (value.isEmpty()) {
             return;
         }
 
         try {
-            int damage = Integer.parseInt(value);
+            int number = Integer.parseInt(value);
 
-            if (damage < 0) {
-                damage = 0;
+            if (number < min) {
+                number = min;
             }
 
-            minecraft.player.connection.sendCommand("ibe damage " + damage);
+            if (number > max) {
+                number = max;
+            }
+
+            sendCommand(prefix + number);
         } catch (NumberFormatException ignored) {
-            minecraft.player.displayClientMessage(
-                    Component.literal("IBE Editor: damage должен быть числом"),
-                    true
-            );
+            if (minecraft.player != null) {
+                minecraft.player.displayClientMessage(
+                        Component.literal("IBE Editor: нужно ввести число"),
+                        true
+                );
+            }
         }
     }
 
-    private void repairItem() {
+    private void sendCommand(String command) {
         Minecraft minecraft = Minecraft.getInstance();
 
         if (minecraft.player == null || minecraft.player.connection == null) {
             return;
         }
 
-        minecraft.player.connection.sendCommand("ibe repair");
-    }
-    private void changeCount(int delta) {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        if (minecraft.player == null) {
-            return;
-        }
-
-        ItemStack stack = minecraft.player.getMainHandItem();
-
-        if (stack.isEmpty()) {
-            return;
-        }
-
-        int newCount = stack.getCount() + delta;
-
-        if (newCount < 1) {
-            newCount = 1;
-        }
-
-        if (newCount > 99) {
-            newCount = 99;
-        }
-
-        setCount(newCount);
-    }
-
-    private void setCount(int amount) {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        if (minecraft.player == null || minecraft.player.connection == null) {
-            return;
-        }
-
-        minecraft.player.connection.sendCommand("ibe count " + amount);
+        minecraft.player.connection.sendCommand(command);
     }
 
     private String getItemDebugText() {
-        Minecraft minecraft = Minecraft.getInstance();
-
-        if (minecraft.player == null) {
-            return "Player not found";
-        }
-
-        ItemStack stack = minecraft.player.getMainHandItem();
+        ItemStack stack = getCurrentStack();
 
         if (stack.isEmpty()) {
             return "Empty hand";
@@ -480,12 +452,18 @@ public class ItemEditorScreen extends Screen {
                 Name: %s
                 ID: %s
                 Count: %s
+                Max stack size: %s
+                Damage: %s
+                Max damage: %s
                 Components:
                 %s
                 """.formatted(
                 stack.getHoverName().getString(),
                 BuiltInRegistries.ITEM.getKey(stack.getItem()),
                 stack.getCount(),
+                stack.getMaxStackSize(),
+                stack.isDamageableItem() ? stack.getDamageValue() : "-",
+                stack.isDamageableItem() ? stack.getMaxDamage() : "-",
                 stack.getComponents()
         );
     }
